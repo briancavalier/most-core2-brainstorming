@@ -1,0 +1,18 @@
+{
+  "name": "most-core2-brainstorming",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^20.11.27",
+    "esbuild": "^0.20.1",
+    "esbuild-register": "^3.5.0",
+    "typescript": "^5.4.2"
+  }
+}
