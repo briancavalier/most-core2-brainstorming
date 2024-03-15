@@ -175,29 +175,19 @@ class CombineSink<I extends number, Streams extends readonly Stream<unknown, unk
 
 const continueWith = <E1, A2, E2, R2, D extends Disposable>(f: (e?: E1) => Stream<A2, E2, R2, D>) => <A1, R1>(s: Stream<A1, E1, R1, D>) =>
   stream((env: R1 & R2, s1: Sink<A1 | A2, E1 | E2>) => {
-    const s0 = new ContinueWithSink(env, f, s1)
-    const d = s.run(env, s0)
+    let d = s.run(env, {
+      event: a => s1.event(a),
+      end: e => {
+        d[Symbol.dispose]()
+        d = f(e).run(env, s1)
+      }
+    })
     return {
       [Symbol.dispose]() {
         d[Symbol.dispose]()
-        s0.d[Symbol.dispose]()
       }
     }
   })
-
-class ContinueWithSink<A1, E1, R1, A2, E2, R2> implements Sink<A1, E1> {
-  public d: Disposable = disposeNone
-
-  constructor(private readonly env: R1 & R2, private readonly f: (e?: E1) => Stream<A2, E2, R2, Disposable>, private readonly sink: Sink<A1 | A2, E1 | E2>) { }
-
-  event(a: A1) {
-    this.sink.event(a)
-  }
-
-  end(e?: E1) {
-    this.d = this.f(e).run(this.env, this.sink)
-  }
-}
 
 // Similar to @most/core runEffects
 // Run a stream in the provided environment
