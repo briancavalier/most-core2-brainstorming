@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -11,8 +12,9 @@
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^20.11.27",
-    "esbuild": "^0.20.1",
-    "esbuild-register": "^3.5.0",
+    "rxjs": "^7.8.1",
+    "tinybench": "^2.6.0",
+    "tsx": "^4.7.1",
     "typescript": "^5.4.2"
   }
 }
