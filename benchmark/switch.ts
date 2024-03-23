@@ -1,17 +1,16 @@
 import { Bench } from 'tinybench'
-import { Immediate, Sink, filter, map, runPromise, scan, stream, tap } from '../src'
+import { Immediate, Sink, lswitch, map, runPromise, scan, stream, tap } from '../src'
 import * as Rx from 'rxjs'
 import * as MC from '@most/core'
 import * as MS from '@most/scheduler'
 
 const bench = new Bench({ time: 100 })
 
-const n = 1000000
+const n = 1000
+const m = 1000
 
-const arr = Array.from({ length: n }, (_, i) => i)
+const arr = Array.from({ length: n }, (_, i) => Array.from({ length: m }, (_, j) => j))
 
-const add1 = (x: number) => x + 1
-const even = (x: number) => (x % 2) === 0
 const sum = (x: number, y: number) => {
   // console.log(x, y)
   return x + y
@@ -36,20 +35,22 @@ const fromArrayM = <A>(arr: readonly A[]) => MC.newStream<A>((sink, s) =>
   }, s))
 
 bench
-  .add(`rx7 map-filter-reduce ${n}`, () => {
-    return Rx.lastValueFrom(Rx.from(arr).pipe(Rx.map(add1)).pipe(Rx.filter(even)).pipe(Rx.reduce(sum, 0)))
+  .add(`rx7 switch ${n} x ${m}`, () => {
+    return Rx.lastValueFrom(Rx.from(arr).pipe(Rx.map(x => Rx.from(x).pipe(Rx.observeOn(Rx.asapScheduler)))).pipe(Rx.switchAll()).pipe(Rx.reduce(sum, 0)))
   })
-  .add(`mc1 map-filter-reduce ${n}`, () => {
+  .add(`mc1 switch ${n} x ${m}`, () => {
     let r = 0
-    const s0 = MC.scan(sum, 0, MC.filter(even, MC.map(add1, fromArrayM(arr))))
+    const s0 = MC.scan(sum, 0, MC.switchLatest(MC.map(fromArrayM, fromArrayM(arr))))
     const s = MC.tap((x => r = x), s0)
     return MC.runEffects(s, MS.newDefaultScheduler()).then(() => r)
   })
-  .add(`mc2 map-filter-reduce ${n}`, () => {
+  .add(`mc2 switch ${n} x ${m}`, () => {
     let r = 0
-    const s = fromArray(arr).pipe(map(add1)).pipe(filter(even)).pipe(scan(sum, 0)).pipe(tap(x => r = x))
+    const s = fromArray(arr).pipe(map(fromArray)).pipe(lswitch).pipe(scan(sum, 0)).pipe(tap(x => r = x))
     return runPromise(s, { setImmediate }).then(() => r)
   })
+
+bench.addEventListener('error', console.error)
 
 await bench.warmup()
 await bench.run()

@@ -83,8 +83,8 @@ export type Immediate = {
   setImmediate<Args extends readonly any[]>(f: (...a: Args) => void, ...a: Args): Disposable
 }
 
-export const now = stream(({ setImmediate }: Immediate, sink: Sink<undefined, never>) => setImmediate(sink => {
-  sink.event(undefined)
+export const now = <A>(a: A) => stream(({ setImmediate }: Immediate, sink: Sink<A, never>) => setImmediate(sink => {
+  sink.event(a)
   sink.end()
 }, sink))
 
@@ -199,6 +199,39 @@ class CombineSink<I extends number, Streams extends readonly Stream<unknown, unk
     this.sink.event(this.values)
   }
 }
+
+export const lswitch = <S extends Stream<Stream<unknown, unknown, any, Disposable>, unknown, any, Disposable>>(s: S): Stream<S['A']['A'], S['E'] | S['A']['E'], U2I<Env<S['A']> | Env<S>>, Disposable> =>
+  stream((env: U2I<Env<S['A']> | Env<S>>, sink: Sink<S['A']['A'], S['E'] | S['A']['E']>) => {
+    let currentDisposable: Disposable = disposeNone
+    let outerEnded = false
+    let innerEnded = false
+    const d = s.run(env, {
+      event: s => {
+        currentDisposable[Symbol.dispose]()
+        if (outerEnded) return
+        currentDisposable = s.run(env, {
+          event: a => sink.event(a),
+          error: e => sink.error(e),
+          end: () => {
+            if (innerEnded) return
+            innerEnded = true
+            if (outerEnded) sink.end()
+          }
+        })
+      },
+      error: e => {
+        currentDisposable[Symbol.dispose]()
+        outerEnded = true
+        sink.error(e)
+      },
+      end: () => {
+        if (outerEnded) return
+        outerEnded = true
+        if (innerEnded) sink.end()
+      }
+    })
+    return { [Symbol.dispose]() { d[Symbol.dispose](); currentDisposable[Symbol.dispose]() } }
+  })
 
 export const continueWith = <E1, A2, E2, R2, D extends Disposable>(f: () => Stream<A2, E2, R2, D>) => <A1, R1>(s: Stream<A1, E1, R1, D>) =>
   stream((env: R1 & R2, s1: Sink<A1 | A2, E1 | E2>) => {
