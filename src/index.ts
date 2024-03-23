@@ -80,7 +80,7 @@ export const empty: Stream<never, never, {}, Disposable> = stream((_, sink) => {
 export const never: Stream<never, never, {}, Disposable> = stream(() => ({ [Symbol.dispose]: () => undefined }))
 
 export type Immediate = {
-  setImmediate<Args extends readonly any[]>(f: (...a: Args) => void, ...a: Args): Disposable
+  setImmediate: typeof setImmediate
 }
 
 export const now = <A>(a: A) => stream(({ setImmediate }: Immediate, sink: Sink<A, never>) => setImmediate(sink => {
@@ -89,17 +89,21 @@ export const now = <A>(a: A) => stream(({ setImmediate }: Immediate, sink: Sink<
 }, sink))
 
 export type Timeout = {
-  setTimeout<Args extends readonly any[]>(f: (...a: Args) => void, timeoutMillis: number, ...a: Args): Disposable
+  setTimeout: typeof setTimeout
 }
 
-export const at = (t: number) =>
-  stream(({ setTimeout }: Timeout, sink: Sink<undefined, never>) => setTimeout(sink => {
-    sink.event(undefined)
+export const at = <A>(t: number, a: A) =>
+  stream(({ setTimeout }: Timeout, sink: Sink<A, never>) => setTimeout(sink => {
+    sink.event(a)
     sink.end()
   }, t, sink))
 
-export const periodic = (period: number): Stream<undefined, never, Timeout, Disposable> =>
-  at(period).pipe(continueWith(() => periodic(period)))
+export type Interval = {
+  setInterval: typeof setInterval
+}
+
+export const periodic = <A>(period: number, a: A) => stream(({ setInterval }: Interval, sink: Sink<A, never>) =>
+  setInterval(sink => sink.event(a), period, sink))
 
 export const map = <A, B>(f: (a: A) => B) => <E, R, D>(s: Stream<A, E, R, D>) =>
   stream((env: R, sink: Sink<B, E>) => s.run(env, new MapSink(f, sink)))
@@ -208,7 +212,6 @@ export const lswitch = <S extends Stream<Stream<unknown, unknown, any, Disposabl
     const d = s.run(env, {
       event: s => {
         currentDisposable[Symbol.dispose]()
-        if (outerEnded) return
         currentDisposable = s.run(env, {
           event: a => sink.event(a),
           error: e => sink.error(e),
@@ -285,14 +288,14 @@ export const runPromise = <A, E, R>(s: Stream<A, E, R, Disposable>, env: R) =>
     })
   )
 
-// const p1 = periodic(1000).pipe(map(() => Math.random()))
-// const p2 = periodic(2500).pipe(map(() => Date.now()))
-// const p3 = now.pipe(map(() => 1))
+// const p1 = periodic(1000, 0).pipe(map(() => Math.random()))
+// const p2 = periodic(2500, 0).pipe(map(() => Date.now()))
+// const p3 = now(1)
 
 // const s = combine([0, 0, 1], p1, p2, p3)
 // const s = merge(p1, p2, p3)
 
-// runStream(s, { setTimeout, setImmediate }, {
+// runStream(s, { setInterval, setImmediate }, {
 //   event: console.log,
 //   error: console.error,
 //   end: () => console.log('done')
