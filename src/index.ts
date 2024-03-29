@@ -6,10 +6,6 @@ export interface Stream<A, E, R, D> {
   R: (r: R) => void
   D: D
   run(env: R, sink: Sink<A, E>): D
-
-  // This might be a nice addition.  Other libs seem to have adopted it
-  // and it's a good standin for |>
-  pipe<B>(f: (s: Stream<A, E, R, D>) => B): B
 }
 
 type U2I<U> =
@@ -30,10 +26,8 @@ export interface Sink<A, E> {
 // bulk of what an application does after it's started, this will be ok
 // The same might hold for Sink, but I'm not sure.
 // We should test it, though.
-export const stream = <A, E, R, D>(run: (env: R, sink: Sink<A, E>) => D): Stream<A, E, R, D> => ({
-  run,
-  pipe(f) { return f(this) }
-}) as Stream<A, E, R, D>
+export const stream = <A, E, R, D>(run: (env: R, sink: Sink<A, E>) => D): Stream<A, E, R, D> =>
+  ({ run }) as Stream<A, E, R, D>
 
 abstract class TransformSink<A, B, E> implements Sink<A, E> {
   constructor(protected readonly sink: Sink<B, E>) { }
@@ -143,7 +137,7 @@ class FilterSink<A, E> extends TransformSink<A, A, E> {
   }
 }
 
-export const scan = <A, B>(f: (b: B, a: A) => B, b: B) => <E, R, D>(s: Stream<A, E, R, D>): Stream<B, E, R, D> =>
+export const scan = <A, B>(f: (b: B, a: A) => B, b: B) => <E, R, D>(s: Stream<A, E, R, D>) =>
   stream((env: R, sink: Sink<B, E>) => s.run(env, new ScanSink(f, b, sink)))
 
 class ScanSink<A, B, E> extends TransformSink<A, B, E> {
@@ -155,11 +149,9 @@ class ScanSink<A, B, E> extends TransformSink<A, B, E> {
   }
 }
 
-export const merge = <Streams extends readonly Stream<unknown, unknown, any, Disposable>[]>(...ss: Streams): Stream<Streams[number]['A'], Streams[number]['E'], U2I<Env<Streams[number]>>, Disposable> =>
+export const merge = <Streams extends readonly Stream<unknown, unknown, any, Disposable>[]>(...ss: Streams) =>
   stream((env: U2I<Env<Streams[number]>>, sink: Sink<Streams[number]['A'], Streams[number]['E']>) => {
     const state = { active: ss.length }
-    // All multi-stream combinators seem like they might benefit from
-    // DisposableStack, but I don't have any experience with it yet.
     const disposables = [] as Disposable[]
     disposables.push(...ss.map(s => s.run(env, new MergeSink(sink, state, disposables))))
     return { [Symbol.dispose]: () => disposables.forEach(d => d[Symbol.dispose]()) }
@@ -179,7 +171,7 @@ class MergeSink<A, E> extends MergingSink<A, E> {
 // FYI: change here to add the initial values
 // This simplifies combine drastically by not having to buffer
 // until it has at least one value from all streams.
-// It's trivial to recover the other behavior using an array of undefines
+// It's trivial to recover the other behavior using an array of undefineds
 // and a subsequent filter()
 export const combine = <const Streams extends readonly Stream<unknown, unknown, any, Disposable>[]>(
   init: { readonly [K in keyof Streams]: Streams[K]['A'] },
@@ -255,7 +247,7 @@ export const continueWith = <E1, A2, E2, R2, D extends Disposable>(f: () => Stre
 
 // Similar to @most/core runEffects
 // Run a stream in the provided environment
-export const runStream = <A, E, R>(s: Stream<A, E, R, Disposable>, env: R, sink: Sink<A, E>) => {
+export const runStream = <A, E, R>(env: R, sink: Sink<A, E>) => (s: Stream<A, E, R, Disposable>) => {
   const d = s.run(env, {
     event: e => sink.event(e),
     error(e) {
@@ -279,24 +271,17 @@ export const runStream = <A, E, R>(s: Stream<A, E, R, Disposable>, env: R, sink:
 
 // Similar to @most/core runEffects
 // Run a stream in the provided environment, return a promise for its end
-export const runPromise = <A, E, R>(s: Stream<A, E, R, Disposable>, env: R) =>
-  new Promise<void>((resolve, reject) =>
-    runStream(s, env, {
+export const runPromise = <R>(env: R, signal?: AbortSignal) => <A, E>(s: Stream<A, E, R, Disposable>) =>
+  new Promise<void>((end, error) => {
+    const d = s.run(env, {
       event() { },
-      error: e => reject(e),
-      end: resolve
+      error,
+      end
     })
-  )
+    signal?.addEventListener('abort', () => {
+      d[Symbol.dispose]()
+      error(new Error('Aborted'))
+    })
+  })
 
-// const p1 = periodic(1000, 0).pipe(map(() => Math.random()))
-// const p2 = periodic(2500, 0).pipe(map(() => Date.now()))
-// const p3 = now(1)
-
-// const s = combine([0, 0, 1], p1, p2, p3)
-// const s = merge(p1, p2, p3)
-
-// runStream(s, { setInterval, setImmediate }, {
-//   event: console.log,
-//   error: console.error,
-//   end: () => console.log('done')
-// })
+export * from './pipe'

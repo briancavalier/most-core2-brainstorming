@@ -1,5 +1,5 @@
 import { Bench } from 'tinybench'
-import { Immediate, Sink, lswitch, map, runPromise, scan, stream, tap } from '../src'
+import { Immediate, Sink, lswitch, map, pipe, runPromise, scan, stream, tap } from '../src'
 import * as Rx from 'rxjs'
 import * as MC from '@most/core'
 import * as MS from '@most/scheduler'
@@ -36,7 +36,7 @@ const fromArrayM = <A>(arr: readonly A[]) => MC.newStream<A>((sink, s) =>
 
 bench
   .add(`rx7 switch ${n} x ${m}`, () => {
-    return Rx.lastValueFrom(Rx.from(arr).pipe(Rx.map(x => Rx.from(x).pipe(Rx.observeOn(Rx.asapScheduler)))).pipe(Rx.switchAll()).pipe(Rx.reduce(sum, 0)))
+    return Rx.lastValueFrom(Rx.from(arr).pipe(Rx.map(x => Rx.from(x).pipe(Rx.observeOn(Rx.asapScheduler))), Rx.switchAll(), Rx.reduce(sum, 0)))
   })
   .add(`mc1 switch ${n} x ${m}`, () => {
     let r = 0
@@ -46,8 +46,7 @@ bench
   })
   .add(`mc2 switch ${n} x ${m}`, () => {
     let r = 0
-    const s = fromArray(arr).pipe(map(fromArray)).pipe(lswitch).pipe(scan(sum, 0)).pipe(tap(x => r = x))
-    return runPromise(s, { setImmediate }).then(() => r)
+    return pipe(fromArray(arr), map(fromArray), lswitch, scan(sum, 0), tap(x => r = x), runPromise({ setImmediate })).then(() => r)
   })
 
 bench.addEventListener('error', console.error)
